@@ -1,0 +1,208 @@
+---
+title: "Case study 2"
+author: "Phani Kumar"
+date: "10/28/2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+options(scipen = 999)
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(flipTime)
+```
+
+```{r}
+
+Customer_Acqusition <- read.csv("C:\\Users\\PHANI KUMAR\\Desktop\\R case study 2 (Credit card)\\Customer Acqusition.csv")
+
+repayment <- read.csv("C:\\Users\\PHANI KUMAR\\Desktop\\R case study 2 (Credit card)\\Repayment.csv")
+
+Spend <- read.csv("C:\\Users\\PHANI KUMAR\\Desktop\\R case study 2 (Credit card)\\Spend.csv")
+
+```
+
+```{r}
+#Question 1.A--Replacing age with mean values
+
+Customer_Acqusition$Age <- ifelse(Customer_Acqusition$Age < 17,mean(Customer_Acqusition$Age),Customer_Acqusition$Age)
+
+sum(Customer_Acqusition$Age < 17)
+
+#Question B--replace spend amount more than the limit  with 50% of the  customer limit
+
+Spend$Amount <- round(Spend$Amount)
+
+spend_custjoin <- dplyr::left_join(x = Spend , y = Customer_Acqusition,by = "Customer")
+
+spend_custjoin$Amount <- ifelse(spend_custjoin$Amount > spend_custjoin$Limit,(spend_custjoin$Limit/2),spend_custjoin$Amount)
+
+#Question C--In case repayment amount more than the limit replace with limit
+
+repayment_custjoin <- dplyr::left_join(x = Customer_Acqusition , y = repayment,by = "Customer")
+
+repayment$Amount <- round(repayment$Amount)
+
+repayment_custjoin$Amount <- ifelse(repayment_custjoin$Amount > repayment_custjoin$Limit,repayment_custjoin$Limit,repayment_custjoin$Amount)
+
+```
+
+```{r}
+#Q.2.A
+
+data.frame(unique(Customer_Acqusition$Customer))
+data.frame(unique(repayment$Customer))
+data.frame(unique(Spend$Customer))
+
+#2.B
+
+data.frame(unique(Customer_Acqusition$Product))
+data.frame(unique(Customer_Acqusition$Segment))
+data.frame(unique(Spend$Type))
+data.frame(unique(Customer_Acqusition$City))
+
+#2.C--Average mpnthly spend by customers
+
+Spend$Month <- AsDate(Spend$Month)
+
+Spend %>%group_by(Customer,month = lubridate::month(Month),year = lubridate::year(Month)) %>% 
+                  summarize(month_average = mean(Amount))
+
+#2.D--Average mpnthly repayment by customers
+
+repayment$Month <- AsDate(repayment$Month)
+
+repayment %>%group_by(Customer,month = lubridate::month(Month),year = lubridate::year(Month)) %>% 
+                  summarize(month_average = mean(Amount))
+
+#2.E--profit of the bank
+
+rep_amt <- repayment %>%group_by(Customer,month = lubridate::month(Month),year = lubridate::year(Month),Amount)
+
+spend_amt <- Spend %>%group_by(Customer,month = lubridate::month(Month),year = lubridate::year(Month),Amount)
+
+repayment$bank_monthly_profit = rep_amt$Amount - spend_amt$Amount
+
+repayment$intrest_bank_earned <- ifelse(repayment$bank_monthly_profit >
+                                  0,round((repayment$bank_monthly_profit*2.9)/100,digits = 2),0)
+
+#2.F--What are the top 5 product types
+
+Spend%>%group_by(Type)%>%summarize(Frequency = n())%>%dplyr::arrange(desc(Frequency))
+
+head(Spend%>%group_by(Type)%>%summarize(Frequency = n())%>%dplyr::arrange(desc(Frequency)),5)
+
+#2.G--Which city has the maximum spending
+
+spend_custjoin %>% dplyr::group_by(City) %>% 
+  dplyr::summarize(Sum_TS = sum(Amount))
+
+#2.H--Which age group is spending more money
+
+#Divided the age based on  certain criteria
+
+spend_custjoin$Age_Group <- ifelse(spend_custjoin$Age < 30,"Young Age" , ifelse(spend_custjoin$Age > 30 &
+                                spend_custjoin$Age < 55 ,"Middle Age","Old age"  ))
+
+spend_custjoin %>% dplyr::group_by(Age_Group) %>% 
+                   dplyr::summarize(Sum_TS = sum(Amount))
+
+#2.I--Top 10 cust in terms of repayment
+
+top10_repayment <- 	repayment %>% dplyr::group_by(Customer) %>% 
+                   dplyr::summarize(Tot_repayment =sum(Amount))
+
+head(dplyr::arrange(top10_repayment,desc(top10_repayment$Tot_repayment)),10)
+
+```
+
+```{r}
+#Q3.Analysis for city wise product wise and year wise spend
+q3 <- spend_custjoin %>% dplyr::group_by(City,product = spend_custjoin$Product, year = spend_amt$year) %>%dplyr::summarize(Tot_spend =sum(Amount))
+
+ggplot(q3,aes(x = City, y = Tot_spend, color = product)) + 
+  geom_point()+facet_grid(year~.)
+
+```
+
+```{r}
+#q.4.a--graph for city wise month wise amount spend
+ggplot(spend_amt) +geom_bar(aes(x = spend_custjoin$City, fill = spend_amt$month))
+
+ggplot(spend_amt) + aes(x = month, y = spend_amt$Amount, fill = spend_custjoin$City  ) + 
+geom_bar(stat = "identity",position = "stack")
+
+#q.4.b--yearly spend on air tickets
+
+q4b <- spend_amt %>% dplyr::group_by(Type ,year) %>%dplyr::summarize(Tot_spend =sum(Amount))
+
+q4b_graph <- q4b[q4b$Type == "AIR TICKET",c("year","Tot_spend")]
+
+ggplot(q4b_graph) +geom_col(aes(x = year, y = Tot_spend))
+
+#q.4.c--comparing monthly spend for each products
+
+spend_custjoin$Amount=round(spend_custjoin$Amount)
+
+ggplot2::ggplot(spend_custjoin) +aes(x = spend_custjoin$Product,  y = spend_amt$month)+
+                   geom_col(color = "indianred")
+
+```
+
+```{r}
+#q.5-- user defined function
+
+repayment_custjoin$Month <- AsDate(repayment_custjoin$Month)
+
+repayment_custjoin$Year <- lubridate::year(repayment_custjoin$Month)
+
+rep_amt$product <-  Customer_Acqusition$Product
+rep_amt$City <-  Customer_Acqusition$City
+repayment_custjoin$Month_name <- lubridate::month(repayment_custjoin$Month,label = T)
+
+
+product <- rep_amt$product
+month <- rep_amt$month
+Amount <- rep_amt$Amount
+Cust_Id <- rep_amt$Customer
+
+q5_udf <- data.frame(cbind(product,month,Amount,Cust_Id))
+
+q5_udf$product <- rep_amt$product
+q5_udf$month <- rep_amt$month
+q5_udf$Amount <- rep_amt$Amount
+q5_udf$Cust_Id <- rep_amt$Customer
+q5_udf$City <- rep_amt$City
+
+
+Func_Top_Cust <- function(x){
+  print(q5_udf$product[!duplicated(q5_udf$product)])
+  Type <- readline("Please Enter the type from above:  ")
+  product <- as.character(Type)
+  print(q5_udf$month[(!duplicated(q5_udf$month))])
+  Mon <- readline("Please provide Month  from above:  ")
+  Mon <- as.character(Mon)
+  Top <- q5_udf[which(q5_udf$month == Mon & q5_udf$product == product),]
+  Top10 <- top_n(Top,10,Amount)
+    return(Top10)
+}
+
+Func_Top_Cust(q5_udf)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
